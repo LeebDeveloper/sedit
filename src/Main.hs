@@ -111,10 +111,33 @@ columnStmt = do
 
 columTypeStmt = do 
     {
-        return SimpleType {typeName = "bigint", typeSize = 20, typeUnsigned = True}
+        space';
+        name     <- identifier;
+        space';
+        size     <- option 0 (do {
+                space'; char '('; space';
+                val <- many1 digit;
+                space'; char ')'; space';
+                return (read val)
+            });
+        space';        
+        unsigned <- option "" (string "unsigned");
+        space';
+        return SimpleType {typeName = name, typeSize = size, typeUnsigned = (unsigned == "unsigned")}
     }
 
 columnDefaultStmt = do
     {
-        return NotNull
+        space';
+        defaultValue <- choice [nullStmt, notNullStmt, defaultValueStmt];
+        space';
+        return defaultValue
+    }
+
+nullStmt    = do { string "DEFAULT"; space'; string "NULL"; return Null;}
+notNullStmt = do { string "NOT"; space'; string "NULL"; return NotNull;}
+defaultValueStmt = do { 
+        string "DEFAULT"; space'; char '"'; 
+        val <- many (noneOf ['"']); char '"'; 
+        return DefaultValue {value = val}
     }
