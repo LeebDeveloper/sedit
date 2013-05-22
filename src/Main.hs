@@ -1,11 +1,11 @@
-module Main
-    ( main, createStmt
-    ) where
+module Main ( main ) where
 
 
 import System.Environment
 import Data.List
-import Text.ParserCombinators.Parsec
+
+import Sedit.SqlTypes
+import Sedit.SqlParser
 
 data InputArgs = InputArgs
     {   
@@ -35,109 +35,3 @@ parseArgs _ = Nothing
 head' :: [a] -> Maybe a
 head' []     = Nothing
 head' (x:xs) = Just x
-
-
-data SqlColumnType = 
-    SimpleType {
-        typeName     :: String,
-        typeSize     :: Int,
-        typeUnsigned :: Bool}
-    | Enum {values :: [String]}
-    deriving (Show)
-
-data SqlDefaultValue = Null | NotNull | DefaultValue { value :: String} deriving (Show)
-
-data SqlColumn = SqlColumn
-    {
-        colName     :: String,
-        colType     :: SqlColumnType,
-        colDefault  :: SqlDefaultValue
-    } deriving (Show)
-
-
-data SqlTable = SqlTable
-    {
-        tabName    :: String,
-        tabEngine  :: String,
-        tabCharset :: String ,
-        tabColumns :: [SqlColumn]
-    } deriving (Show)
-
-
-space' = many space
-identifier = many (alphaNum <|> char '_')
-
-createStmt :: Parser SqlTable
-createStmt = do 
-    { 
-        space'; string "CREATE"; space'; string "TABLE"; space'; 
-        tableName <- identifier; space';
-        char '(';
-        columns <- columnListStmt;
-        char ')';
-        engineName  <- engineStmt;
-        charsetName <- charsetStmt;
-        return SqlTable {tabName = tableName, tabEngine = engineName, tabCharset = charsetName, tabColumns = columns}
-    }
-
-engineStmt = do 
-    {
-        space'; string "ENGINE"; space'; char '='; space';
-        engineName <- identifier;
-        return engineName
-    }
-
-charsetStmt = do
-    {
-        space'; string "DEFAULT"; space'; string "CHARSET"; space'; char '='; space';
-        charsetName <- identifier;
-        return charsetName
-    }
-
-columnListStmt = sepBy columnStmt (char ',')
-
-
-columnStmt :: Parser SqlColumn
-columnStmt = do
-    {
-        space'; char '`';
-        ident    <- identifier;
-        char '`';
-        ctype    <- columTypeStmt;
-        cdefault <- columnDefaultStmt;
-        return SqlColumn {colName = ident, colType = ctype, colDefault = cdefault}
-    }
-
-
-columTypeStmt = do 
-    {
-        space';
-        name     <- identifier;
-        space';
-        size     <- option 0 (do {
-                space'; char '('; space';
-                val <- many1 digit;
-                space'; char ')'; space';
-                return (read val)
-            });
-        space';        
-        unsigned <- option "" (string "unsigned");
-        space';
-        return SimpleType {typeName = name, typeSize = size, typeUnsigned = (unsigned == "unsigned")}
-    }
-
-columnDefaultStmt = do
-    {
-        space';
-        defaultValue <- choice [nullStmt, notNullStmt, defaultValueStmt];
-        space';
-        return defaultValue
-    }
-
-nullStmt    = do { string "DEFAULT"; space'; string "NULL"; return Null;}
-notNullStmt = do { string "NOT"; space'; string "NULL"; return NotNull;}
-defaultValueStmt = do { 
-        string "DEFAULT"; space'; char '"'; 
-        val <- many (noneOf ['"']); char '"'; 
-        return DefaultValue {value = val}
-    }
