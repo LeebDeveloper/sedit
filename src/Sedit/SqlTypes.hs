@@ -9,13 +9,14 @@ module Sedit.SqlTypes (
 
 data SqlColumnIndex = SqlColumnIndex
     {
-        indexName    :: String,
+        indexName    :: Maybe String,
         indexColumns :: [String],
-        indexPrimary :: Bool
+        indexPrimary :: Bool,
+        indexUnique  :: Bool
     } deriving (Show)
 
 data SqlColumnType = 
-    SimpleType {
+    PrimitiveType {
         typeName     :: String,
         typeSize     :: Int,
         typeUnsigned :: Bool}

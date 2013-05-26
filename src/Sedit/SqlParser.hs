@@ -7,16 +7,24 @@ import Sedit.SqlTypes
 data TableContentDecl = ColumnDecl SqlColumn | IndexDecl SqlColumnIndex deriving (Show)
 
 space'     = many space
-identifier = many1 (alphaNum <|> char '_')
+
+idstring   = many1 (alphaNum <|> char '_')
+identifier = do 
+    {
+        space'; char '`';
+        i <- idstring;
+        char '`'; space';
+        return i;
+    }
 
 createStmt :: Parser SqlTable
 createStmt = do 
     { 
         space'; string "CREATE"; space'; string "TABLE"; space'; 
         tableName <- identifier; space';
-        char '(';
+        char '('; space';
         content <- contentStmt;
-        char ')';
+        space'; char ')';
         engineName  <- engineStmt;
         charsetName <- charsetStmt;
         return SqlTable {
@@ -31,36 +39,51 @@ createStmt = do
 engineStmt = do 
     {
         space'; string "ENGINE"; space'; char '='; space';
-        engineName <- identifier;
+        engineName <- idstring;
         return engineName
     }
 
 charsetStmt = do
     {
         space'; string "DEFAULT"; space'; string "CHARSET"; space'; char '='; space';
-        charsetName <- identifier;
+        charsetName <- idstring;
         return charsetName
     }
 
 
-contentStmt = sepBy (choice [indexStmt, columnStmt]) (char ',')
+contentStmt = sepBy (choice [indexStmt, columnStmt]) (do {char ','; space';})
 
 
 columnStmt = do
     {
-        space'; char '`';
         ident    <- identifier;
-        char '`';
         ctype    <- columTypeStmt;
         cdefault <- columnDefaultStmt;
         return (ColumnDecl $ SqlColumn {colName = ident, colType = ctype, colDefault = cdefault})
     }
 
 
-columTypeStmt = do 
+columTypeStmt = choice [enumStmt, primitiveTypeStmt]
+
+
+enumStmt = do
+    {
+        space'; string "enum"; space'; char '(';
+        v <- sepBy  (do {
+                        space'; char '\''; 
+                        s <- many1 (noneOf "'");
+                        char '\''; space';
+                        return s}) 
+                    (char ',');
+        char ')'; space';
+        return Enum { values = v}
+    }
+
+
+primitiveTypeStmt = do 
     {
         space';
-        name     <- identifier;
+        name     <- idstring;
         space';
         size     <- option 0 (do {
                 space'; char '('; space';
@@ -71,8 +94,9 @@ columTypeStmt = do
         space';        
         unsigned <- option "" (string "unsigned");
         space';
-        return SimpleType {typeName = name, typeSize = size, typeUnsigned = (unsigned == "unsigned")}
+        return PrimitiveType {typeName = name, typeSize = size, typeUnsigned = (unsigned == "unsigned")}
     }
+
 
 columnDefaultStmt = do
     {
@@ -104,12 +128,16 @@ indexListStmt = do
 
 indexStmt = do
     {
-        space';
         primary <- option "" (string "PRIMARY");
-        space'; string "KEY"; space'; char '`';
-        name    <- identifier;
-        char '`'; space'; char '(';
-        columns <- sepBy (do {space'; char '`'; i <- identifier; char '`'; space'; return i}) (char ',');
+        unique  <- option "" (string "UNIQUE");
+        space'; string "KEY"; space';
+        name    <- optionMaybe identifier;
+        space'; char '(';
+        columns <- sepBy identifier (char ',');
         char ')';
-        return (IndexDecl $ SqlColumnIndex {indexName = name, indexColumns = columns, indexPrimary = (primary == "PRIMARY")});
+        return (IndexDecl $ SqlColumnIndex {
+                                indexName = name, 
+                                indexColumns = columns, 
+                                indexPrimary = (primary == "PRIMARY"),
+                                indexUnique  = (unique == "UNIQUE")});
     }
